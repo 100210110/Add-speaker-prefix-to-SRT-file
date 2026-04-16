@@ -20,6 +20,18 @@
                     "value": "https://github.com/100210110"
                 }
             ]
+        },
+        {
+            "name": "DeepSeek",
+            "vision": "DeepSeek-R1",
+            "belong": "DeepSeek团队",
+            "contact": [
+                {
+                    "type": "官网",
+                    "value": "https://www.deepseek.com/"
+                }
+            ]
+
         }
     ]
 }
