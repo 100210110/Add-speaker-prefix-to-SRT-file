@@ -4,7 +4,11 @@ import re
 import sys
 import os
 import json
+import shutil
 import subprocess
+
+VISION = "1.0.0"
+UPDATE_DATE = "2026-04-01"
 
 file_list = []  # 全局文件列表变量
 
@@ -26,7 +30,6 @@ def update_listbox(window, file_list):
     window["-FILE_LIST-"].update(values=file_list)
     print(f"更新列表框: {file_list}")
 
-
 def on_drop(event, window):
     global file_list
     raw_data = event.data
@@ -45,7 +48,15 @@ def on_drop(event, window):
     update_listbox(window, file_list)
     print("===============\n")
 
-
+def clear_folder(folder_path):
+    """清空指定文件夹内的所有内容，但保留文件夹本身"""
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)  # 如果不存在则创建
+        return
+    # 删除整个文件夹
+    shutil.rmtree(folder_path)
+    # 重新创建空文件夹
+    os.makedirs(folder_path)
 
 
 
@@ -78,7 +89,7 @@ def scan_plugins(plugins_dir="plugins"):
 def build_layout(plugins):
     # 固定部分（文件列表区域）
     layout = [
-        [sg.Text("拖入文件，可以选中一个或多个移除")],
+        [sg.Text("拖入文件，可以选中一个或多个移除 (请不要拖入同名文件)")],
         [sg.Listbox(values=[], size=(80, 15), key="-FILE_LIST-", select_mode=sg.SELECT_MODE_EXTENDED)],
         [sg.Button("清空所有"), sg.Button("移除选中")],
     ]
@@ -95,12 +106,21 @@ def build_layout(plugins):
         # 该类别下的所有按钮，每个占一行
         for name, exe_path, key in items:
             layout.append([sg.Button(name, key=key, size=(20, 1))])
-        layout.append([sg.HorizontalSeparator()])  # 分割线
     
+    layout.extend([
+        [sg.Push(), sg.Text("处理完成请点击导出按钮创建文件")],
+        [sg.Push(), sg.Button("导出", key="output_file", size=(5, 1)), sg.Button("导出并打开位置", key="output_file_and_open", size=(15, 1))]
+        ])
+
+
+    layout.extend([[sg.HorizontalSeparator()], [sg.Text(f"视频后期工具箱 - {VISION} ({UPDATE_DATE})")]])  # 底部版权信息
+
+
     return layout
 
 # 把文件列表发送给插件执行
-def run_plugin(plugin_path, file_list):
+def run_plugin(plugin_path, window):
+    global file_list
 
     # 获取脚本/EXE所在目录
     if getattr(sys, 'frozen', False):
@@ -133,6 +153,12 @@ def run_plugin(plugin_path, file_list):
     if proc.returncode == 0:
         print("插件处理成功")
         if stdout:
+            message = json.loads(stdout)  # 假设插件返回的是 JSON 格式的字符串
+            if message["popup"] == True:
+                sg.popup(message["message"], title=message["title"])
+            if message.get("completed_output_lists"):
+                file_list = message["completed_output_lists"]
+                update_listbox(window, file_list)  # 更新列表框显示新文件
             print(stdout)
     else:
         print(f"插件出错，退出码 {proc.returncode}")
@@ -141,6 +167,20 @@ def run_plugin(plugin_path, file_list):
 
 # 主程序
 def main():
+
+    # 获取脚本/EXE所在目录
+    if getattr(sys, 'frozen', False):
+        # 打包成EXE后的路径
+        program_dir = os.path.dirname(sys.executable)
+    else:
+        # 开发时运行的脚本路径
+        program_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 然后拼接自定义文件夹，例如 "cache"
+    clear_dir = os.path.join(program_dir, "cache/output")
+
+    clear_folder(clear_dir)
+
     # 扫描插件
     plugins = scan_plugins()
     if not plugins:
@@ -151,7 +191,7 @@ def main():
     root.withdraw()
 
     layout = build_layout(plugins)
-    window = sg.Window("视频后期工具箱", layout, finalize=True)
+    window = sg.Window("Re工具箱", layout, finalize=True)
 
     listbox_widget = window["-FILE_LIST-"].Widget
     listbox_widget.drop_target_register(DND_FILES)
@@ -204,7 +244,7 @@ def main():
             for cat, name, exe_path, key in plugins:
                 if key == event:
                     print(f"启动插件：{name}")
-                    run_plugin(exe_path, file_list)
+                    run_plugin(exe_path, window)
                     break
             else:
                 print(f"未找到插件：{event}")

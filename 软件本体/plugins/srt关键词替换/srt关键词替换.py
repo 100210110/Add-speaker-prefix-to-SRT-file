@@ -84,18 +84,22 @@ def clean_text(file_path, processor):
 
 # 文明用语小助手
 def print_times(count_dict):
+
+    str_text = ""
+
     # 按删除次数降序排序
     sorted_items = sorted(count_dict.items(), key=lambda item: item[1], reverse=True)
     i = 1
-    print("\n删词统计:")
+    str_text += "删词统计:\n"
     for file, count in sorted_items:
-        print(f"{i}. {file} 抓到 {count} 个敏感词")
+        str_text += f"{i}. {file} 抓到 {count} 个敏感词\n"
         i += 1
-    
-    print("\n文明小助手提示您: \n" \
-    "   视频千万条, 文明第一条\n" \
-    "   讲话不规范, 后期两行泪")
 
+    str_text += "\n文明小助手提示您: \n" \
+    "   视频千万条, 文明第一条\n" \
+    "   讲话不规范, 后期两行泪"
+
+    return str_text
 
 
 
@@ -125,6 +129,7 @@ def main():
     os.makedirs(cache_dir, exist_ok=True)
 
     deleted_counts = {}
+    completed_output_list = []
     for file_path in file_lists:
         # 你的原有处理逻辑
         print(f"处理: {file_path}", file=sys.stderr)
@@ -140,23 +145,29 @@ def main():
                 ext = os.path.splitext(file_path)[1]
                 output_path = os.path.join(cache_dir, base_name + ext)
 
-                # 重名处理
-                counter = 1
-                while os.path.exists(output_path):
-                    output_path = os.path.join(cache_dir, f"{base_name}_{counter}{ext}")
-                    counter += 1
 
                 with open(output_path, 'w', encoding='utf-8') as f:
                     f.write(text)
+                    completed_output_list.append(output_path)
+
                 print(f"已处理：{file_path} -> {output_path}", file=sys.stderr)
             except Exception as e:
                 print(f"❌ 处理失败：{file_path}\n错误: {e}", file=sys.stderr)
         else:
             print(f"⚠️ 跳过非 SRT 文件：{file_path}", file=sys.stderr)
 
-    print_times(deleted_counts)  # 输出删除统计
+    str_text = print_times(deleted_counts)  # 输出删除统计
 
-    print(json.dumps({"status": "ok", "processed": len(file_lists)}))
+    return_data = {
+        "status": "ok",
+        "processed": len(file_lists),
+        "deleted_counts": deleted_counts,
+        "completed_output_lists": completed_output_list,
+        "popup": True,
+        "title": "文明小助手",
+        "message": str_text
+    }
+    print(json.dumps(return_data, ensure_ascii=False), file=sys.stdout)
 
 
 
