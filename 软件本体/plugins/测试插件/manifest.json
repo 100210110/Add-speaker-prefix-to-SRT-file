@@ -4,7 +4,7 @@
   "version": "1.0",
   "buttons": [
     {
-      "label": "测试按钮",
+      "label": "测试弹窗",
       "tooltip": "这是一个测试按钮",
       "executable": "test.py",
       "type": "script"
