@@ -1,6 +1,13 @@
 {
   "name": "给srt加前缀",
   "category": "字幕处理",
-  "executable": "自动给srt加前缀.py",
-  "version": "1.0"
+  "version": "1.0",
+  "buttons": [
+    {
+      "label": "给srt加前缀",
+      "tooltip": "批量给srt文件添加前缀",
+      "executable": "自动给srt加前缀.py",
+      "type": "script"
+    }
+  ]
 }

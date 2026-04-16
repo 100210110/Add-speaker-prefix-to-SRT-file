@@ -1,6 +1,19 @@
 {
   "name": "srt关键词替换",
   "category": "字幕处理",
-  "executable": "srt关键词替换.py",
-  "version": "1.0"
+  "version": "1.0",
+  "buttons": [
+    {
+      "label": "srt关键词替换",
+      "tooltip": "批量替换srt文件中的关键词",
+      "executable": "srt关键词替换.py",
+      "type": "script"
+    },
+    {
+      "label": "修改关键词配置",
+      "tooltip": "修改关键词配置",
+      "executable": "config.json",
+      "type": "config"
+    }
+  ]
 }
