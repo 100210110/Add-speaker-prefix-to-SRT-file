@@ -153,12 +153,19 @@ def run_plugin(plugin_path, window):
     if proc.returncode == 0:
         print("插件处理成功")
         if stdout:
-            message = json.loads(stdout)  # 假设插件返回的是 JSON 格式的字符串
-            if message["popup"] == True:
-                sg.popup(message["message"], title=message["title"])
-            if message.get("completed_output_lists"):
-                file_list = message["completed_output_lists"]
-                update_listbox(window, file_list)  # 更新列表框显示新文件
+            try:
+                message = json.loads(stdout)  # 假设插件返回的是 JSON 格式的字符串
+                
+                if message["popup"] == True:
+                    sg.popup(message["message"], title=message["title"])
+                if message.get("completed_output_lists"):
+                    file_list = message["completed_output_lists"]
+                    update_listbox(window, file_list)  # 更新列表框显示新文件
+            
+            except json.JSONDecodeError:
+                print("插件返回的数据不是有效的 JSON 格式")
+                print("插件输出:", stdout)
+                return
             print(stdout)
     else:
         print(f"插件出错，退出码 {proc.returncode}")
@@ -243,6 +250,7 @@ def main():
             # 根据 key 找到对应的插件信息
             for cat, name, exe_path, key in plugins:
                 if key == event:
+                    sg.popup(f"正在启动插件：{name}\n插件路径: {exe_path}", title="调试信息")
                     print(f"启动插件：{name}")
                     run_plugin(exe_path, window)
                     break
