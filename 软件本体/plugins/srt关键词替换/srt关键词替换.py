@@ -11,24 +11,42 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 
 # 默认配置
-default_config = {
-    "delete": ["卧槽", "我操", "我草", "what's up", "你他妈的", "ntmd", "你妈的", "nmd", "他妈的", "tmd", "妈的", "md", "你妈", "nm", "他妈", "tm"],
-    "replace": {
-        "卡慕": ["卡布", "卡莫", "卡木", "傻逼"],
-        "米洛": ["米诺", "米罗"],
-        "碧月狐": ["月壶", "夜壶", "壁虎"]
-    }
-}
+default_config = {"delete":{"profanity":["卧槽","我操","我草","我靠","我去","what's up","what the fuck","你他妈的","ntmd","你妈的","nmd","他妈的","tmd","妈的","md","你妈","nm","他妈","tm"],"others":["呃"]},"repeat":{"完了":{"max_times":2},"哈":{"max_times":3}},"replace":{"卡慕":["卡布","卡莫","卡木","傻逼","卡不","karm","come"],"卡慕SaMa":["卡慕sama","卡慕Sama","卡慕沙发","卡慕沙吧","砍不上吗","卡慕萨巴"],"谭俊峰":["传进风"],"米洛":["米诺","米罗"],"碧月狐":["碧月湖","闭月狐","毕业胡","b月湖","b月会","B2胡","月壶","夜壶","壁虎","鳖胡","别胡","憋活"],"曹某":["Tom"],"曹小龙":["草药龙","张小龙","操小龙","超小龙","曹勇"],"qiqi":["KI KI","QIQI","QI QI"],"药儿":["幺儿"],"鸽一品":["葛一平","GEP"],"蘑菇牛":["蘑菇流"],"厉害":["牛逼"]}}
 
+
+# 获取资源的绝对路径, 打包后默认返回只读目录, 容开发环境和 PyInstaller 打包后
+def get_path(relative_path=None, use_program_dir=False):
+    """获取程序目录或资源文件的绝对路径。
+    
+    参数:
+        relative_path: 相对路径字符串。若为 None，返回程序所在目录。
+        use_program_dir: 仅在打包后且 relative_path 非 None 时有效。
+                         True  → 使用程序所在目录（sys.executable 所在目录）
+                         False → 使用资源临时目录（sys._MEIPASS，只读）
+                         开发环境下此参数无区别。
+    
+    返回:
+        绝对路径字符串。
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包后
+        if relative_path is None or use_program_dir:
+            base_path = os.path.dirname(sys.executable)  # 程序目录，可写
+        else:
+            base_path = sys._MEIPASS                      # 只读资源目录
+    else:
+        # 开发环境（脚本运行）
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    
+    if relative_path is None:
+        return base_path
+    else:
+        return os.path.join(base_path, relative_path)
 
 # 读配置，出问题则重置配置
 def get_config():
-    # 获取插件自身的目录
-    if getattr(sys, 'frozen', False):
-        plugin_dir = os.path.dirname(sys.argv[0])
-    else:
-        plugin_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(plugin_dir, "config.json")
+    # 获取配置文件路径
+    config_path = get_path("config.json", use_program_dir=True)
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -48,7 +66,10 @@ def get_config():
 def create_regex():
     config = get_config()   # 从 json 读取配置
 
-    delete_set = set(config["delete"])
+    delete_set = set()
+    for category in config["delete"]:
+        delete_set.update(config["delete"][category])
+    profanity_set = set(config["delete"]["profanity"])
     bad_to_good = {}
     for good, bad_list in config["replace"].items():
         for bad in bad_list:
@@ -65,8 +86,10 @@ def create_regex():
         word = match.group(0)
         if word in delete_set:
             nonlocal deleted_times
-            deleted_times += 1
+            if word in profanity_set:
+                deleted_times += 1
             return ""
+        
         elif word in bad_to_good:
             return bad_to_good[word]
         else:
@@ -104,10 +127,10 @@ def print_times(count_dict):
     i = 1
     str_text += "删词统计:\n"
     for file, count in sorted_items:
-        str_text += f"{i}. {file} 抓到 {count} 个敏感词\n"
-        if i >= 10:
+        if i > 10:
             str_text += "   ...\n"
             break
+        str_text += f"{i}. {file} 抓到 {count} 个敏感词\n"
         i += 1
 
     str_text += "\n文明小助手提示您: \n" \
