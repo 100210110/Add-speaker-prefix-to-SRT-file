@@ -7,8 +7,8 @@ import json
 import shutil
 import subprocess
 import io
-from load_zip import import_plugin_list, test_plugins_list
-
+from load_zip import import_plugin_list
+from collections import defaultdict
 
 # 仅在标准流存在时强制使用 UTF-8（避免在 --windowed 模式下报错）
 if sys.stdin is not None:
@@ -79,7 +79,7 @@ def parse_dropped_files(data):
     return [data]
 
 # 更新列表框显示
-def update_listbox(window, file_list):
+def update_listbox(window, file_list=FILE_LIST):
     """同步更新列表框显示"""
     window["-FILE_LIST-"].update(values=file_list)
     print(f"更新列表框: {file_list}")
@@ -183,6 +183,68 @@ def scan_plugins(plugins_dir=None):
             })
     return all_buttons
 
+# 处理layout
+class BuildLayout():
+    def __init__(self):
+        self.buttons = {}
+        self.layout_head = self.build_layout_head()
+        self.layout_plugins = []
+        self.layout_output = []
+        self.layout_foot = []
+    
+    def build_layout_head(self):
+        return[
+            [  # 第一行：两个 Column 并排
+                sg.Column([
+                    [sg.Text("拖入文件，可以选中一个或多个移除 (请不要拖入同名文件)")],
+                    [sg.Listbox(values=[], size=(60, 17), key="-FILE_LIST-", select_mode=sg.SELECT_MODE_EXTENDED)],
+                    [
+                        sg.Button("清空所有"),
+                        sg.Button("移除选中"), 
+                        sg.Push(),
+                        sg.Button("重启刷新", key="refresh_plugin", tooltip="刷新还在学, 目前只能点击重启刷新", size=(10, 1)),
+                        sg.Button("导入插件", key="import_plugin", size=(10, 1))
+                    ]
+                ]),
+                sg.Column([
+                    [sg.Text("日志", justification='left')],
+                    [sg.Multiline(size=(20, 18), key="-LOG-", autoscroll=True, disabled=True, write_only=False, reroute_stdout=True)],
+                    [sg.Push(), sg.Button("清空日志", key="clear_log", size=(10, 1))]
+                ])
+            ],
+        ]
+
+    def build_layout_plugins(self):
+        layout_plugins=[]
+        # 按 (category, plugin_folder) 分组
+        groups = defaultdict(list)      # key: (category, plugin_folder), value: list of buttons
+        buttons = scan_plugins()
+        for btn in buttons:
+            folder = btn.get('plugin_folder', 'unknown')
+            groups[(btn['category'], folder)].append(btn)
+        
+        # 按类别排序，确保同一类别的所有分组连续显示（类别名称字母顺序）
+        sorted_groups = sorted(groups.items(), key=lambda item: item[0][0])  # item[0] = (category, folder)
+        
+        # 记录上一个类别，用于判断是否需要添加类别标题
+        last_category = None
+        for (category, folder), btns in sorted_groups:
+            # 如果类别变化，添加类别标题行
+            if category != last_category:
+                layout_plugins.append([sg.Text(category, font=("微软雅黑", 10, "bold"))])
+                last_category = category
+            # 为该插件的所有按钮生成一行（水平排列）
+            row = [sg.Button(btn["label"], key=btn["key"], tooltip=btn["tooltip"], size=(20, 1)) for btn in btns]
+            layout_plugins.append(row)
+        
+        return
+
+    def build_layout_output(self):
+        return[
+            [sg.Push(), sg.Text("处理完成请点击导出按钮创建文件")],
+            [sg.Push(), sg.Button("导出", key="output_file", size=(5, 1)), sg.Button("导出并打开位置", key="output_file_and_open", size=(15, 1))]
+        ]
+
 # 动态构建 layout（基于按钮列表）
 def build_layout(buttons):
     # 固定部分（文件列表区域）
@@ -195,7 +257,7 @@ def build_layout(buttons):
                     sg.Button("清空所有"),
                     sg.Button("移除选中"), 
                     sg.Push(),
-                    sg.Button("测试插件", key="test_plugin", tooltip="检查安装包和已装插件版本", size=(10, 1)),
+                    sg.Button("重启刷新", key="refresh_plugin", tooltip="刷新还在学, 目前只能点击重启刷新", size=(10, 1)),
                     sg.Button("导入插件", key="import_plugin", size=(10, 1))
                 ]
             ]),
@@ -208,7 +270,6 @@ def build_layout(buttons):
     ]
     
     # 按 (category, plugin_folder) 分组
-    from collections import defaultdict
     groups = defaultdict(list)      # key: (category, plugin_folder), value: list of buttons
     for btn in buttons:
         folder = btn.get('plugin_folder', 'unknown')
@@ -342,47 +403,60 @@ def show_about_window():
             break
     window.close()
 
-# 主程序
-def main():
+# 初始化函数
+def init_program():
+    """初始化程序，返回 (window, button_map, program_dir, root) 或 None 表示失败"""
+    global FILE_LIST  # 如果坚持使用全局变量
+    
     # 获取程序根目录
     if getattr(sys, 'frozen', False):
         program_dir = os.path.dirname(sys.executable)
     else:
         program_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 清空缓存目录
+    # 清空缓存
     cache_dir = os.path.join(program_dir, "cache/output")
     clear_folder(cache_dir)
 
-    # 扫描插件（新版多按钮支持）
+    # 扫描插件
     buttons = scan_plugins()
-    if not buttons:
-        sg.popup_error("未找到任何插件，请检查 plugins 文件夹")
-        return
+    # if not buttons:
+    #     sg.popup_error("未找到任何插件，请检查 plugins 文件夹")
+    #     return None  # 初始化失败
 
-    # 创建带拖拽支持的根窗口
+    # 创建拖拽根窗口
     root = TkinterDnD.Tk()
     root.withdraw()
 
+    # 构建布局并创建主窗口
     layout = build_layout(buttons)
     window = sg.Window("Re工具箱", layout, finalize=True, icon=APP_ICON_PATH)
 
-    # 注册拖拽事件
+    # 注册拖拽事件（on_drop 需要能访问 window）
     listbox_widget = window["-FILE_LIST-"].Widget
     listbox_widget.drop_target_register(DND_FILES)
+    # 使用 lambda 捕获当前 window 对象
     listbox_widget.dnd_bind('<<Drop>>', lambda e: on_drop(e, window))
 
-    # 处理命令行参数（拖拽到exe）
+    # 处理命令行参数
     if len(sys.argv) > 1:
-        print("从命令行参数添加文件:")
         for file_path in sys.argv[1:]:
-            FILE_LIST.append(file_path)
-            print(f"添加: {file_path}")
+            FILE_LIST.append(file_path)  # 需要 global 声明
         update_listbox(window, FILE_LIST)
 
-
-    # 为了方便事件处理，构建一个从 key 到按钮字典的映射
+    # 构建按钮映射
     button_map = {btn["key"]: btn for btn in buttons}
+
+    return window, button_map, program_dir, root, cache_dir
+
+def main():
+    global FILE_LIST  # 如果需要在事件循环中修改
+    
+    result = init_program()
+    if result is None:
+        return  # 初始化失败，直接退出
+    
+    window, button_map, program_dir, root, cache_dir = result
 
     # 事件循环
     while True:
@@ -415,15 +489,44 @@ def main():
             print("=================")
         
 
-        elif event == "test_plugin":
-            test_plugins_list(FILE_LIST)
-            print("\n测试完成\n")
+        elif event == "refresh_plugin":
+            # 1. 关闭旧窗口
+            window.close()
+            # 2. 销毁 Tkinter 根窗口
+            root.destroy()
+            # 3. 重新初始化
+            new_result = init_program()
+            if new_result is None:
+                break  # 刷新失败，退出程序
+            # 4. 更新全局变量
+            window, button_map, program_dir, root, cache_dir = new_result
+            # 注意：FILE_LIST 可能需要在刷新时保留或重置，根据需求决定
+            # 例如保留原列表：pass，或清空：FILE_LIST.clear()
+            continue  # 跳过本次循环后续处理，等待新窗口事件
 
         elif event == "import_plugin":
-            failed_files = import_plugin_list(FILE_LIST)
-            if failed_files:
-                sg.popup_error(f"以下文件未导入:\n" + "\n".join(failed_files))
-            update_listbox(window, failed_files)
+            file_result = import_plugin_list(FILE_LIST)
+            if file_result.get("failed_files", []):
+                sg.popup_error(f"以下文件未导入:\n" + "\n".join(file_result.get("failed_files", [])))
+            set2 = set(file_result.get("success_list", []))
+            result = [x for x in FILE_LIST if x not in set2]
+            FILE_LIST = result
+            update_listbox(window, FILE_LIST)
+
+            
+            # 1. 关闭旧窗口
+            window.close()
+            # 2. 销毁 Tkinter 根窗口
+            root.destroy()
+            # 3. 重新初始化
+            new_result = init_program()
+            if new_result is None:
+                break  # 刷新失败，退出程序
+            # 4. 更新全局变量
+            window, button_map, program_dir, root, cache_dir = new_result
+            # 注意：FILE_LIST 可能需要在刷新时保留或重置，根据需求决定
+            # 例如保留原列表：pass，或清空：FILE_LIST.clear()
+            continue  # 跳过本次循环后续处理，等待新窗口事件
         
 
         elif event == "clear_log":

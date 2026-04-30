@@ -70,7 +70,7 @@ class PluginInstaller:
                     data = json.load(f)
                     self.name = data["name"]
                     self.version = data["version"]
-                    self.description = data["description"]
+                    self.description = data.get("description", "这个插件没写描述")
                     plugin_id = data.get("plugin_id", self.name)
                     if not plugin_id or plugin_id.strip() == "":
                         raise ValueError("manifest.json 必须包含非空的 plugin_id 或 name 字段")
@@ -85,20 +85,20 @@ class PluginInstaller:
         try:
             with open(os.path.join(self.plugin_path, 'manifest.json'), 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                print("开始读取已安装插件信息以检查版本...")
+                # print("开始读取已安装插件信息以检查版本...")
                 plugin_version = data.get("version", None)
         except Exception :
             plugin_version = None  # 没有安装过或插件出错
             
 
         if plugin_version is None:
-            print("本插件为新插件，正在安装...", file=sys.stdout)
+            print(f"\"{self.name}\" 为新插件，正在安装...", file=sys.stdout)
            
         elif parse_version(self.version) > parse_version(plugin_version):
-            print("已安装版本较旧，正在安装新版本...", file=sys.stdout)
+            print(f"\"{self.name}\" 已安装版本较旧，正在安装新版本...", file=sys.stdout)
         
         elif parse_version(self.version) == parse_version(plugin_version):
-            if sg.popup_yes_no("已安装版本与当前版本相同，确定要重装吗？") == "Yes":
+            if sg.popup_yes_no(f"\"{self.name}\" 已安装版本与当前版本相同，是否重装？") == "Yes":
                 print("正在重装插件...", file=sys.stdout)
             else:
                 print("已取消安装", file=sys.stdout)
@@ -121,13 +121,14 @@ class PluginInstaller:
     def install(self):
         try:
             shutil.rmtree(self.plugin_path, ignore_errors=True)
-            with zipfile.ZipFile(self.zip_path, 'r') as zf:
+            with zipfile.ZipFile(self.zip_path, 'r', metadata_encoding='utf-8') as zf:
                 for member in zf.namelist():
                     normalized = member.replace('\\', '/')
                     if normalized.startswith('/') or '..' in normalized.split('/') or os.path.isabs(member):
                         raise ValueError(f"不安全路径: {member}")
                 # 将所有文件解压到 ./plugins/my_plugin/ 目录
                 zf.extractall(path=self.plugin_path)
+                print(f"成功安装: {self.name}")
         except Exception as e:
             print(f"安装插件出错: {e}", file=sys.stderr)
             sg.popup_error(f"安装插件出错: {e}")    
@@ -145,16 +146,23 @@ def test_plugins_list(FILE_LIST=[]):
 
 
 def import_plugin_list(zip_path_list: list):
-    filed_list = []  # 安装失败的文件路径列表
+    success_list = []
+    failed_list = []  # 安装失败的文件路径列表
     for zip_path in zip_path_list:
         plugin_zip = PluginInstaller(zip_path)
         if not plugin_zip.load_zip_json():
             print("加载插件信息失败，安装中止", file=sys.stderr)
-            return
-        if not plugin_zip.check_version_and_install():
-            filed_list.append(zip_path)  # 安装失败的文件路径列表
-            
-    return filed_list  # 返回安装失败的文件路径列表
+            failed_list.append(zip_path)
+            continue
+        if plugin_zip.check_version_and_install():
+            success_list.append(zip_path)
+        else:
+            failed_list.append(zip_path)  # 安装失败的文件路径列表
+
+    return {
+        "success_list": success_list,
+        "failed_files": failed_list
+    }
     
 
 if __name__ == "__main__":
