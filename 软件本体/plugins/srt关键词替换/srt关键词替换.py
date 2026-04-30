@@ -169,7 +169,6 @@ def main():
     deleted_counts = {}
     completed_output_list = []
     for file_path in file_lists:
-        # 你的原有处理逻辑
         print(f"处理: {file_path}", file=sys.stderr)
         if os.path.isfile(file_path) and file_path.lower().endswith('.srt'):
             try:
